@@ -35,7 +35,7 @@
           pname = "goda-fm";
           inherit version;
           src = ./.;
-          vendorHash = "sha256-6JlftXetdW/8VpdNbGCfkcLImhsc6yYV7p7GVxxp7V8=";
+          vendorHash = "sha256-88TpOfR+UAlIMsybDb4jtDHU19VKgvG0vOh+GZz8ylg=";
           subPackages = [ "." ];
           doCheck = false;
           postInstall = ''
