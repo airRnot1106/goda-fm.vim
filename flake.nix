@@ -3,132 +3,84 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    goda-vim = {
-      url = "github:Shougo/goda.vim/v0.9.0";
-      flake = false;
-    };
-    goda-ks = {
-      url = "github:airRnot1106/goda-ks.vim";
-      flake = false;
+    goda-nix = {
+      url = "github:airRnot1106/goda.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
   outputs =
-    {
-      self,
-      nixpkgs,
-      goda-vim,
-      goda-ks,
-    }:
+    { nixpkgs, goda-nix, ... }:
     let
-      systems = [
-        "aarch64-darwin"
-        "x86_64-darwin"
-        "aarch64-linux"
-        "x86_64-linux"
-      ];
-      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
-      version = "0.1.0";
+      forAllSystems =
+        f:
+        nixpkgs.lib.genAttrs [
+          "aarch64-darwin"
+          "aarch64-linux"
+          "x86_64-linux"
+        ] (system: f nixpkgs.legacyPackages.${system});
 
-      mkPackages = pkgs: rec {
-        goda-fm = pkgs.buildGo126Module {
-          pname = "goda-fm";
-          inherit version;
+      build = pkgs: rec {
+        plugin = goda-nix.lib.buildGodaPlugin pkgs {
           src = ./.;
-          vendorHash = "sha256-88TpOfR+UAlIMsybDb4jtDHU19VKgvG0vOh+GZz8ylg=";
-          subPackages = [ "." ];
-          doCheck = false;
-          postInstall = ''
-            mv $out/bin/goda-fm.vim $out/bin/goda-fm
-          '';
-          meta.mainProgram = "goda-fm";
+          version = "0.1.0";
+          vendorHash = "sha256-n6A5Ci+4zJaF9MFmnbd+2xMDaGzCmwbHoOOcvlhLmag=";
         };
 
-        goda-vim-plugin = pkgs.vimUtils.buildVimPlugin {
-          pname = "goda.vim";
-          version = "0-${goda-vim.shortRev}";
-          src = goda-vim;
+        dictionary = pkgs.fetchurl {
+          url = "https://github.com/oguna/migemo-compact-dict-latest/releases/download/v0.2/migemo-compact-dict";
+          hash = "sha256-+jrCQLM1iSIvzUCRDe0sFpc3TgGvFNwrtd32g6oumho=";
         };
 
-        vim-plugin = pkgs.vimUtils.buildVimPlugin {
-          pname = "goda-fm.vim";
-          inherit version;
-          src = pkgs.lib.fileset.toSource {
-            root = ./.;
-            fileset = pkgs.lib.fileset.unions [
-              ./LICENSE
-              ./autoload
-              ./doc
-              ./plugin
-            ];
-          };
-          dependencies = [ goda-vim-plugin ];
-          preInstall = ''
-            mkdir bin
-            cp ${goda-fm}/bin/goda-fm bin/goda-fm
-          '';
-        };
-
-        default = vim-plugin;
+        goTest =
+          name: nativeBuildInputs: command:
+          plugin.binary.overrideAttrs (prev: {
+            name = "goda-fm-${name}";
+            doCheck = true;
+            nativeBuildInputs = prev.nativeBuildInputs ++ nativeBuildInputs;
+            checkPhase = ''
+              runHook preCheck
+              export HOME=$TMPDIR
+              export GODA_KS_TEST_DICT=${dictionary}
+              ${command}
+              runHook postCheck
+            '';
+            installPhase = "touch $out";
+          });
       };
     in
     {
       packages = forAllSystems (
         pkgs:
         let
-          built = mkPackages pkgs;
+          inherit (build pkgs) plugin;
         in
         {
-          inherit (built) goda-fm vim-plugin default;
-          goda-vim = built.goda-vim-plugin;
+          default = plugin;
+          vim-plugin = plugin;
+          goda-fm = plugin.binary;
+          goda-vim = plugin.godaVim;
         }
       );
 
       checks = forAllSystems (
         pkgs:
         let
-          built = mkPackages pkgs;
-          dictionary = pkgs.fetchurl {
-            url = "https://github.com/oguna/migemo-compact-dict-latest/releases/download/v0.2/migemo-compact-dict";
-            hash = "sha256-+jrCQLM1iSIvzUCRDe0sFpc3TgGvFNwrtd32g6oumho=";
-          };
-          goTest =
-            name: command:
-            built.goda-fm.overrideAttrs {
-              pname = "goda-fm-${name}";
-              doCheck = true;
-              checkPhase = ''
-                runHook preCheck
-                export GODA_KS_TEST_DICT=${dictionary}
-                ${command}
-                runHook postCheck
-              '';
-              installPhase = "touch $out";
-              postInstall = "";
-            };
+          inherit (build pkgs) goTest;
         in
         {
-          unit = goTest "unit" "go test ./internal/...";
-          e2e = goTest "e2e" ''
-            export HOME=$TMPDIR
-            export PATH=${
-              pkgs.lib.makeBinPath [
-                pkgs.vim
-                pkgs.neovim
-              ]
-            }:$PATH
-            export GODA_FM_E2E_GODA=${goda-vim}
-            export GODA_FM_E2E_GODA_KS=${goda-ks}
-            export GODA_FM_E2E_STRICT=1
-            go test -v -count=1 ./e2e
-          '';
+          unit = goTest "unit" [ ] "go test ./internal/...";
+          e2e = goTest "e2e" [
+            pkgs.vim
+            pkgs.neovim
+          ] "GODA_FM_E2E_STRICT=1 go test -v -count=1 ./e2e";
         }
       );
 
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
           packages = [
-            pkgs.go_1_26
+            (build pkgs).plugin.binary.go
             pkgs.vim
             pkgs.neovim
           ];
