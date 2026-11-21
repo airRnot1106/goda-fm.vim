@@ -4,6 +4,9 @@ Jump to any word in the window by typing a few letters of it, in Vim and Neovim.
 
 goda-fm.vim is a port of [fuzzy-motion.vim](https://github.com/yuki-yano/fuzzy-motion.vim) from [denops.vim](https://github.com/vim-denops/denops.vim) to [goda.vim](https://github.com/Shougo/goda.vim). It keeps `:FuzzyMotion`, the labels, the highlights and the `g:fuzzy_motion_*` options, and needs no Deno.
 
+> [!WARNING]
+> This project is under active development and is not yet stable. The API may change without notice.
+
 ## Features
 
 - Works in Vim and Neovim
